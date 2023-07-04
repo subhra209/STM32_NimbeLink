@@ -23,6 +23,8 @@ char const Nib_Test_Cmd[] = "nibtest";                  // Nimbelink test comman
 char const App_Ready_s[] = "app ready";
 uint8_t AppReadyFlag = 0;                               // app ready flag for indicate device is ready
 
+
+uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len);
 /*************************************************************************
 * Function Name: NIB_Write
 * Parameters:1) data - command char address
@@ -35,7 +37,7 @@ uint8_t AppReadyFlag = 0;                               // app ready flag for in
 *************************************************************************/
 void NIB_Write(const void *data, uint16_t len)
 {
-  HAL_UART_Transmit(&huart1,(uint8_t *)data,len,5000);
+  HAL_UART_Transmit(&huart1,(uint8_t *)data, len, 5000);
 }
 /*************************************************************************
 * Function Name: NIB_SendCmdLen
@@ -47,7 +49,7 @@ void NIB_Write(const void *data, uint16_t len)
 * Description: send command to nimbelink module and print command in terminal
 *
 *************************************************************************/
-void NIB_SendCmdLen(const char *cmd,uint16_t Len)
+void NIB_SendCmdLen(const char *cmd, uint16_t Len)
 {
   // find out length of string
   if(Len == AUTO_CMD_LEN){
@@ -87,6 +89,32 @@ uint8_t NIB_Res_Ok(void)
     }
 }
 
+uint8_t NIB_powerOn(void)
+{
+  uint8_t timeout = 100;
+
+  if(AppReadyFlag == FALSE)
+  {
+    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)"APP RDY", 7) != NULL)
+    {
+      AppReadyFlag = TRUE;
+
+      //send echo off cmd
+      NIB_SendCmdLen(GSM_SET_ECHO_OFF, AUTO_CMD_LEN);
+      while(timeout)
+      {
+        vTaskDelay(100/ portTICK_PERIOD_MS);
+        if(findBuff(NBL_Rcv_Buffer, (uint8_t*)"OK", 2) != NULL)
+        {
+          dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
+          break;
+        }
+        --timeout;
+      }
+    }
+  }
+  return AppReadyFlag;
+}
 /*************************************************************************
 * Function Name: NIB_Clearbuffer
 * Parameters: None
@@ -170,24 +198,57 @@ void USART1_IRQHandler(void)
     //store received character into buffer
     NBL_Rcv_Buffer[NBL_Rcv_BufferIndex++] = data;
 
+    if((NBL_Rcv_BufferIndex == 1) && (data == 0))
+    {
+      NBL_Rcv_BufferIndex = 0;
+    }
+
     // app ready flag status update
     if(strstr((const char *)NBL_Rcv_Buffer, App_Ready_s) != NULL)
     {
       AppReadyFlag = 1;
     }
     //    NBL_Rcv_BufferIndex = 0;
-
-    // flush (clear) DR REGISTER
-    __HAL_UART_FLUSH_DRREGISTER(&huart1);
-    // clear interrupt for next interrupt
-    __HAL_UART_CLEAR_FLAG(&huart1,UART_FLAG_RXNE);
   }
+  // flush (clear) DR REGISTER
+  __HAL_UART_FLUSH_DRREGISTER(&huart1);
+  // clear interrupt for next interrupt
+  __HAL_UART_CLEAR_FLAG(&huart1,UART_FLAG_RXNE);
+
+  if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_ORE) != RESET)
+  {
+    __HAL_UART_CLEAR_FLAG(&huart1, UART_FLAG_ORE);
+  }
+
 }
 /* check nimbelink receiver flag is TRUE/FALSE in IRQ */
 /* compare Received character of array with command */
 /* if match command then TEST nimbelink */
 /* if not matched command then print Enter valid command */
 
+uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
+{
+  uint8_t* ptr = NULL;
+  uint8_t i = 0, j = 0;
+  for(i = 0; i < MAX_NBL_RECV_DATA_LEN; i++)
+  {
+    for(j = 0; j < len; j++)
+    {
+      if(buff[i + j] != buff_find[j])
+      {
+        break;
+      }
+    }
+    if(j == len)
+    {
+      ptr = &buff[i];
+      return ptr;
+    }
+    i++;
+  }
+
+  return ptr;
+}
 
 //char* strFind(const char* mainStr, const char* searchStr)
 //{
@@ -212,6 +273,7 @@ void USART1_IRQHandler(void)
 //  }
 //  return NULL;
 //}
+
 /*************************************************************************
 * Function Name: NIB_CMD_Process
 * Parameters: None

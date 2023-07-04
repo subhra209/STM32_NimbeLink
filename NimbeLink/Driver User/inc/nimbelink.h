@@ -19,5 +19,6 @@ void NIB_CMD_Process(void);
 
 void NIB_test(void);
 //char* strFind(const char* mainStr, const char* searchStr);
+uint8_t NIB_powerOn(void);
 
 #endif  //#ifndef __NIMBELINK_H__

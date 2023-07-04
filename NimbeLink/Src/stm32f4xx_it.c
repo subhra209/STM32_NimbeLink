@@ -50,12 +50,12 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
 
 extern TIM_HandleTypeDef htim1;
 
 /******************************************************************************/
-/*            Cortex-M4 Processor Interruption and Exception Handlers         */ 
+/*            Cortex-M4 Processor Interruption and Exception Handlers         */
 /******************************************************************************/
 
 /**
@@ -208,15 +208,15 @@ void TIM1_UP_TIM10_IRQHandler(void)
 }
 
 /**
-* @brief This function handles USART1 global interrupt.
+* @brief This function handles USART2 global interrupt.
 */
-void USART1_IRQHandler(void)
+void USART2_IRQHandler(void)
 {
-  /* USER CODE BEGIN USART1_IRQn 0 */
-if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart2,UART_IT_RXNE) != RESET))
+  /* USER CODE BEGIN USART2_IRQn 0 */
+  if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart2,UART_IT_RXNE) != RESET))
   {
     // recieved one character in RcvCharData from Data Register
-   uint8_t RcvCharData = (uint8_t)(huart2.Instance->DR) & (uint8_t)0x00FF;
+    uint8_t RcvCharData = (uint8_t)(huart2.Instance->DR) & (uint8_t)0x00FF;
 
     // clear flag Register Not Empty interrupt
     __HAL_UART_CLEAR_FLAG(&huart2,UART_FLAG_RXNE);
@@ -238,11 +238,12 @@ if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET) && (__HAL_UART_GET_IT_
       NIB_CMD_Process();
       Dbg_Rcv_Beffer_Index = 0;
     }
-  /* USER CODE END USART1_IRQn 0 */
-  HAL_UART_IRQHandler(&huart1);
-  /* USER CODE BEGIN USART1_IRQn 1 */
+  }
+  /* USER CODE END USART2_IRQn 0 */
+  HAL_UART_IRQHandler(&huart2);
+  /* USER CODE BEGIN USART2_IRQn 1 */
 
-  /* USER CODE END USART1_IRQn 1 */
+  /* USER CODE END USART2_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
