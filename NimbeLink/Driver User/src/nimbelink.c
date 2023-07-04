@@ -37,6 +37,8 @@ uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len);
 *************************************************************************/
 void NIB_Write(const void *data, uint16_t len)
 {
+  len = (len == AUTO_CMD_LEN) ? strlen((const char *)data) : len;
+
   HAL_UART_Transmit(&huart1,(uint8_t *)data, len, 5000);
 }
 /*************************************************************************
@@ -49,19 +51,31 @@ void NIB_Write(const void *data, uint16_t len)
 * Description: send command to nimbelink module and print command in terminal
 *
 *************************************************************************/
-void NIB_SendCmdLen(const char *cmd, uint16_t Len)
+RES_TYPE NIB_SendCmd(const char *cmd, const char * pRes1, const char * pRes2, uint16_t timeOut_s)
 {
-  // find out length of string
-  if(Len == AUTO_CMD_LEN){
-    Len = strlen(cmd);
-  }
-
   // clear receiver buffer
   NIB_Clearbuffer();
   // print command in terminal
   dprintf("NIMBLINK <--- %s", cmd);
   // send command to nimbelink module
-  NIB_Write(cmd, Len);
+  NIB_Write(cmd, AUTO_CMD_LEN);
+
+  while(timeOut_s)
+  {
+    vTaskDelay(1000/ portTICK_PERIOD_MS);
+    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)pRes1, strlen(pRes1)) != NULL)
+    {
+      dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
+      return RES_SUCCESS;
+    }
+    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)pRes2, strlen(pRes2)) != NULL)
+    {
+      dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
+      return RES_ERROR;
+    }
+    --timeOut_s;
+  }
+  return RES_TIMEOUT;
 }
 
 /*************************************************************************
@@ -91,29 +105,55 @@ uint8_t NIB_Res_Ok(void)
 
 uint8_t NIB_powerOn(void)
 {
-  uint8_t timeout = 100;
-
   if(AppReadyFlag == FALSE)
   {
     if(findBuff(NBL_Rcv_Buffer, (uint8_t*)"APP RDY", 7) != NULL)
     {
       AppReadyFlag = TRUE;
-
       //send echo off cmd
-      NIB_SendCmdLen(GSM_SET_ECHO_OFF, AUTO_CMD_LEN);
-      while(timeout)
+      if(NIB_SendCmd(NIB_SET_ECHO_OFF, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) == RES_SUCCESS)
       {
-        vTaskDelay(100/ portTICK_PERIOD_MS);
-        if(findBuff(NBL_Rcv_Buffer, (uint8_t*)"OK", 2) != NULL)
-        {
-          dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
-          break;
-        }
-        --timeout;
+        NIB_getInfo();
       }
     }
   }
   return AppReadyFlag;
+}
+
+uint8_t NIB_getInfo(void)
+{
+  uint8_t status =  0;
+  if(NIB_SendCmd(GSM_GET_IMEI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  if(NIB_SendCmd(GSM_GET_ICCID, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  if(NIB_SendCmd(GSM_GET_CIMI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  if(NIB_SendCmd(GSM_GET_CGMM, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  if(NIB_SendCmd(GSM_GET_CGMI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  if(NIB_SendCmd(GSM_FIRMWARE_VER, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    status =  0;
+  }
+
+  return status;
 }
 /*************************************************************************
 * Function Name: NIB_Clearbuffer
@@ -160,7 +200,7 @@ void NIB_test(void)
   //power on Module
 
   // send ATEO command for echo  off
-  NIB_SendCmdLen(GSM_SET_ECHO_OFF,AUTO_CMD_LEN);
+//  NIB_SendCmdLen(GSM_SET_ECHO_OFF,AUTO_CMD_LEN);
    //NIB_SendCmdLen(GSM_SET_ECHO_OFF,AUTO_CMD_LEN);
 
   // wait for command responce
@@ -198,10 +238,10 @@ void USART1_IRQHandler(void)
     //store received character into buffer
     NBL_Rcv_Buffer[NBL_Rcv_BufferIndex++] = data;
 
-    if((NBL_Rcv_BufferIndex == 1) && (data == 0))
-    {
-      NBL_Rcv_BufferIndex = 0;
-    }
+//    if((NBL_Rcv_BufferIndex == 1) && (data == 0))
+//    {
+//      NBL_Rcv_BufferIndex = 0;
+//    }
 
     // app ready flag status update
     if(strstr((const char *)NBL_Rcv_Buffer, App_Ready_s) != NULL)
@@ -244,7 +284,6 @@ uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
       ptr = &buff[i];
       return ptr;
     }
-    i++;
   }
 
   return ptr;
