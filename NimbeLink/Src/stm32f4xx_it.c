@@ -38,6 +38,15 @@
 
 /* USER CODE BEGIN 0 */
 #include "stm32f4xx_hal_uart.h"
+#include "nimbelink.h"
+
+  // flag indicate  the Nimbelink test task execute
+  uint8_t NIB_Test_Enable_f = FALSE;
+  // buffer for store charchater of array recieved from UART1 Interrupt
+  uint8_t Dbg_Rcv_Beffer[MAX_DBG_RECV_DATA_LEN];
+  // Dbg_Rcv_Beffer index
+  uint8_t Dbg_Rcv_Beffer_Index = 0;
+
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -46,7 +55,7 @@ extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim1;
 
 /******************************************************************************/
-/*            Cortex-M4 Processor Interruption and Exception Handlers         */
+/*            Cortex-M4 Processor Interruption and Exception Handlers         */ 
 /******************************************************************************/
 
 /**
@@ -204,7 +213,31 @@ void TIM1_UP_TIM10_IRQHandler(void)
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
+if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart2,UART_IT_RXNE) != RESET))
+  {
+    // recieved one character in RcvCharData from Data Register
+   uint8_t RcvCharData = (uint8_t)(huart2.Instance->DR) & (uint8_t)0x00FF;
 
+    // clear flag Register Not Empty interrupt
+    __HAL_UART_CLEAR_FLAG(&huart2,UART_FLAG_RXNE);
+
+    // transmit recieved character from recieved interrupt
+    HAL_UART_Transmit(&huart2,(uint8_t *)&RcvCharData,1,1000);
+
+    Dbg_Rcv_Beffer[Dbg_Rcv_Beffer_Index++] = RcvCharData;
+    // when recieved '\r' or '\n' character then replace that character by '\0'
+    if((RcvCharData == '\r') || (RcvCharData == '\n'))
+    {
+      Dbg_Rcv_Beffer[Dbg_Rcv_Beffer_Index - 1] = '\0';
+
+      // send new line character
+      HAL_UART_Transmit(&huart2,"\r\n",2,1000);
+      // flag indicate  the Nimbelink test task execute
+      NIB_Test_Enable_f = TRUE;
+      // process command operation test nimbelink
+      NIB_CMD_Process();
+      Dbg_Rcv_Beffer_Index = 0;
+    }
   /* USER CODE END USART1_IRQn 0 */
   HAL_UART_IRQHandler(&huart1);
   /* USER CODE BEGIN USART1_IRQn 1 */
