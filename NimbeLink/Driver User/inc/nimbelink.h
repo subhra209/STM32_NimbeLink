@@ -4,9 +4,10 @@
 
 #define MAX_NBL_RECV_DATA_LEN   128
 #define MAX_DBG_RECV_DATA_LEN   128
+
 #define AUTO_CMD_LEN ((uint16_t)-1)
 
-#define NIB_MAX_RES_TIMEOUT     180      //3 min
+#define NIB_RES_TIMEOUT     180      //3 min
 
 
 #define NIB_SET_ECHO_OFF        "ATE0\r\n"                         //0k
@@ -18,8 +19,8 @@
 #define GSM_GET_CGMM            "AT+CGMM\r\n"
 #define GSM_GET_CGMI            "AT+CGMI\r\n"
 #define GSM_FIRMWARE_VER        "AT+CGMR\r\n"
-#define SIGNAL_QUALITY          "AT+CSQ\r\n"
-#define NET_REG_REPORT          "AT+CREG?\r\n"
+#define GSM_GET_CSQ             "AT+CSQ\r\n"
+#define GSM_NET_QUERY_CREG      "AT+CREG?\r\n"
 #define SOCKET_CONTEXT_ID       "AT+QIACT=1\r\n"                                       // OK
 #define SOCKET_DIAL_STAGING     "AT+QIOPEN=1,0,\"TCP\",\"g.scstg.net\",9221,0,0\r\n" // CONNECT
 #define SOCKET_SEND_START       "AT+QISEND=0\r\n"                                      //>
@@ -29,6 +30,17 @@
 #define SOCKET_CLOSE            "AT+QICLOSE=1\r\n"
 
 #define SOCKET_RESPONSE_SUCCESS "SEND OK"
+
+
+#define NIB_RES_OK                              "OK"
+#define NIB_RES_ERROR                           "ERROR"
+
+typedef struct {
+  /* HELLO MEssage */
+  uint8_t startByte;
+  uint8_t imei[7];
+  uint8_t flags2[8];
+} WaypointHeader;
 
 typedef enum{
 RES_SUCCESS = 1,
@@ -48,5 +60,8 @@ void NIB_test(void);
 //char* strFind(const char* mainStr, const char* searchStr);
 uint8_t NIB_powerOn(void);
 uint8_t NIB_getInfo(void);
+uint8_t NIB_connectServer(void);
+
+uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len);
 
 #endif  //#ifndef __NIMBELINK_H__

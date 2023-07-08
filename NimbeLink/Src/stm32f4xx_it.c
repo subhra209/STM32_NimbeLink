@@ -49,8 +49,6 @@
   uint8_t Dbg_Rcv_Beffer_Index = 0;
   uint8_t Nib_Test_Cmd[] = "nibtest";                  // Nimbelink test command
 
-  uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len);
-
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -217,7 +215,8 @@ void TIM1_UP_TIM10_IRQHandler(void)
 void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
-  if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET) && (__HAL_UART_GET_IT_SOURCE(&huart2,UART_IT_RXNE) != RESET))
+  if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_RXNE) != RESET)
+     && (__HAL_UART_GET_IT_SOURCE(&huart2,UART_IT_RXNE) != RESET))
   {
     // recieved one character in RcvCharData from Data Register
     uint8_t RcvCharData = (uint8_t)(huart2.Instance->DR) & (uint8_t)0x00FF;
@@ -238,7 +237,7 @@ void USART2_IRQHandler(void)
       HAL_UART_Transmit(&huart2,"\r\n",2,1000);
 
       // compare received data from debug uart with command
-      if(findBuff((uint8_t *)Dbg_Rcv_Beffer,Nib_Test_Cmd,strlen((const char*)Dbg_Rcv_Beffer)) != NULL)
+      if(strstr((char const*)Dbg_Rcv_Beffer, (char const*)Nib_Test_Cmd) != NULL)
       {
         // flag indicate  the Nimbelink test task execute
         NIB_Test_Enable_f = TRUE;

@@ -1,5 +1,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "string.h"
+#include "stdlib.h"
 #include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -23,8 +24,60 @@ uint8_t NBL_Rcv_BufferIndex = 0;                        // buffer index
 char const App_Ready_s[] = "app ready";
 uint8_t AppReadyFlag = 0;                               // app ready flag for indicate device is ready
 
+uint16_t gsmReg_timeOut = 180; //3 min - 180 sec
 
-uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len);
+//Variable to store GSM modem Info
+char iccid[32];
+char imei[20];
+char imsi[16];
+char imei_hex[7];
+
+WaypointHeader Header;
+
+/* Private Function prototype ---------------------------------------------------------*/
+void str_to_imei(char *str, char *imei);
+uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len);
+
+/* Function ------------------------------------------------------------------*/
+
+/*******************************************************************************
+ * Funtion name : str_to_imei                                               *
+ *                                                                             *
+ * Description  :             	   * * 				                                    						   *
+ * Arguments    : none       						   *
+ * Returns      : none                        				   *
+ *******************************************************************************/
+void str_to_imei(char *str, char *imei)
+{
+  unsigned long long ff=0, ff2=0, ff3;
+  uint8_t i = 0;
+
+  ff = *(str + 14) - '0';
+  ff += 10*(*(str + 13) - '0');
+  ff += 100*(*(str + 12) - '0');
+  ff += 1000*(*(str + 11) - '0');
+  ff += 10000*(*(str + 10) - '0');
+  ff += 100000*(*(str + 9) - '0');
+  ff += 1000000*(*(str + 8) - '0');
+  ff += 10000000*(*(str + 7) - '0');
+
+  ff2 = str[6] - '0';
+  ff2 += 10*(str[5] - '0');
+  ff2 += 100*(str[4] - '0');
+  ff2 += 1000*(str[3] - '0');
+  ff2 += 10000*(str[2] - '0');
+  ff2 += 100000*(str[1] - '0');
+  ff2 += 1000000*(str[0] - '0');
+
+  ff3 = ff2 * 100000000 + ff;
+
+  for(i = 0; i < 7; i++)
+  {
+    imei[i] = ff3 & 0xFF;
+    ff3 >>= 8;
+  }
+}
+
 /*************************************************************************
 * Function Name: NIB_Write
 * Parameters:1) data - command char address
@@ -63,12 +116,12 @@ RES_TYPE NIB_SendCmd(const char *cmd, const char * pRes1, const char * pRes2, ui
   while(timeOut_s)
   {
     vTaskDelay(1000/ portTICK_PERIOD_MS);
-    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)pRes1, strlen(pRes1)) != NULL)
+    if(MapForward(NBL_Rcv_Buffer, (uint8_t*)pRes1, strlen(pRes1)) != NULL)
     {
       dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
       return RES_SUCCESS;
     }
-    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)pRes2, strlen(pRes2)) != NULL)
+    if(MapForward(NBL_Rcv_Buffer, (uint8_t*)pRes2, strlen(pRes2)) != NULL)
     {
       dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
       return RES_ERROR;
@@ -103,57 +156,204 @@ uint8_t NIB_Res_Ok(void)
     }
 }
 
+/*************************************************************************
+* Function Name: NIB_powerOn
+* Parameters:none
+
+*
+* Return:none
+*
+* Description: Check for valid response is received or not from nimbelink
+*
+*************************************************************************/
 uint8_t NIB_powerOn(void)
 {
   if(AppReadyFlag == FALSE)
   {
-    if(findBuff(NBL_Rcv_Buffer, (uint8_t*)"APP RDY", 7) != NULL)
+    if(MapForward(NBL_Rcv_Buffer, (uint8_t*)"APP RDY", 7) != NULL)
     {
       AppReadyFlag = TRUE;
       //send echo off cmd
-      if(NIB_SendCmd(NIB_SET_ECHO_OFF, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) == RES_SUCCESS)
+      if(NIB_SendCmd(NIB_SET_ECHO_OFF, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
       {
         NIB_getInfo();
+        NIB_SendCmd("at+crsm=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n",
+                    NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
+        NIB_connectServer();
       }
     }
   }
   return AppReadyFlag;
 }
 
+/*************************************************************************
+* Function Name: NIB_getInfo
+* Parameters:none
+
+*
+* Return:none
+*
+* Description: Check for valid response is received or not from nimbelink
+*
+*************************************************************************/
 uint8_t NIB_getInfo(void)
 {
-  uint8_t status =  0;
-  if(NIB_SendCmd(GSM_GET_IMEI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  uint8_t* pToken = NULL;
+  uint8_t i = 0;
+
+  if(NIB_SendCmd(GSM_GET_IMEI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
-    status =  0;
+    //store IMEI number
+    pToken = MapForward(NBL_Rcv_Buffer,
+                        (unsigned char*)"\n", 1);
+    if(pToken != NULL)
+    {
+      for(i = 0; i < 15; i++)
+      {
+        imei[i] = pToken[i+1];
+      }
+      imei[15] = '\0';
+
+      str_to_imei(imei, imei_hex);
+      memcpy(Header.imei, imei_hex, 7);
+      Header.startByte = 0x90;
+    }
+  }
+  else
+  {
+    return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_ICCID, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  if(NIB_SendCmd(GSM_GET_ICCID, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
-    status =  0;
+    //store ICCID number
+    pToken = MapForward(NBL_Rcv_Buffer,
+                        (unsigned char*)"+CCID: ", 7);
+    if(pToken != NULL)
+    {
+      for(i = 0; i < 20; i++)
+      {
+        iccid[i] = pToken[i + 7];
+      }
+      iccid[20] = '\0';
+    }
+  }
+  else
+  {
+    return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CIMI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  if(NIB_SendCmd(GSM_GET_CIMI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
-    status =  0;
+    pToken = MapForward(NBL_Rcv_Buffer,
+                        (unsigned char*)"\n", 1);
+    if(pToken != NULL)
+    {
+      for(i = 0; i < 15; i++)
+      {
+        imsi[i] = pToken[i+1];
+      }
+      imsi[15] = '\0';
+    }
+  }
+  else
+  {
+    return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CGMM, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  if(NIB_SendCmd(GSM_GET_CGMM, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
-    status =  0;
+    return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CGMI, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  if(NIB_SendCmd(GSM_GET_CGMI, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
-    status =  0;
+    return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_FIRMWARE_VER, "OK", "ERROR", NIB_MAX_RES_TIMEOUT) != RES_SUCCESS)
+  if(NIB_SendCmd(GSM_FIRMWARE_VER, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
-    status =  0;
+    return FALSE;
+  }
+  if(NIB_SendCmd(/*g_gpBuff*/"AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n",
+                NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
   }
 
-  return status;
+  if(NIB_SendCmd(CMD_CFUN1, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/*************************************************************************
+* Function Name: NIB_connectServer
+* Parameters:none
+
+*
+* Return:none
+*
+* Description: Check for valid response is received or not from nimbelink
+*
+*************************************************************************/
+uint8_t NIB_connectServer(void)
+{
+  uint8_t* pToken = NULL;
+  uint8_t csq = 0;
+
+  gsmReg_timeOut = 180; //3 min - 180 sec
+
+  //check CSQ signal
+  //wait until not getting 99,99
+  while(--gsmReg_timeOut)
+  {
+    // network signal strength db
+    if(NIB_SendCmd(GSM_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,
+                   NIB_RES_TIMEOUT) == RES_SUCCESS)
+    {
+      //check CSQ value
+      pToken = MapForward(NBL_Rcv_Buffer,
+                          (unsigned char*)"+CSQ: ", 6);
+      if(pToken != NULL)
+      {
+        csq = atoi((const char *)(pToken + 6));
+        if(csq < 32)
+          break;
+      }
+
+    }
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+  }
+
+  //check CREG Value
+  gsmReg_timeOut = 180;
+  while(--gsmReg_timeOut)
+  {
+    if(NIB_SendCmd(GSM_NET_QUERY_CREG, NIB_RES_OK,
+                   NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+    {
+      //check CREG value
+      pToken = MapForward(NBL_Rcv_Buffer,
+                          (unsigned char*)"+CREG: 0,", 9);
+      if(pToken != NULL)
+      {
+        csq = atoi((const char *)(pToken + 9));
+        //check CREG value 0,1 or 0,5
+        if((csq == 1 || csq == 5))
+          break; //Network detected
+      }
+    }
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+  }
+
+  return TRUE;
 }
 /*************************************************************************
 * Function Name: NIB_Clearbuffer
@@ -232,20 +432,13 @@ void USART1_IRQHandler(void)
     /*Read data from interrupt and copy it to data variable*/
     uint8_t data = (uint8_t)(huart1.Instance->DR) & (uint8_t)0x00FF;
 
+    if(NBL_Rcv_BufferIndex >= MAX_NBL_RECV_DATA_LEN)
+    {
+      NBL_Rcv_BufferIndex = 0;
+    }
     //store received character into buffer
     NBL_Rcv_Buffer[NBL_Rcv_BufferIndex++] = data;
 
-//    if((NBL_Rcv_BufferIndex == 1) && (data == 0))
-//    {
-//      NBL_Rcv_BufferIndex = 0;
-//    }
-
-    // app ready flag status update
-    if(strstr((const char *)NBL_Rcv_Buffer, App_Ready_s) != NULL)
-    {
-      AppReadyFlag = 1;
-    }
-    //    NBL_Rcv_BufferIndex = 0;
   }
   // flush (clear) DR REGISTER
   __HAL_UART_FLUSH_DRREGISTER(&huart1);
@@ -263,7 +456,7 @@ void USART1_IRQHandler(void)
 /* if match command then TEST nimbelink */
 /* if not matched command then print Enter valid command */
 
-uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
+uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len)
 {
   uint8_t* ptr = NULL;
   uint8_t i = 0, j = 0;
@@ -297,13 +490,13 @@ uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
 void NIB_CMD_Process(void)
 {
   // device is ready and debug command received nimbelink test command
-  if(NIB_Test_Enable_f == TRUE)
-  {
     // send command for test nimbelink
     NIB_getInfo();
-    NIB_Test_Enable_f = FALSE;
-  }
 }
+
+
+
+
 
 ///*************************************************************************
 //* Function Name: DBG_Clearbuffer
