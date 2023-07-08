@@ -59,6 +59,7 @@
 
 static uint8_t debugBuffer[DBG_ELEM_SIZE];        /*Store data for use dprintf*/
 uint8_t extern AppReadyFlag;
+extern uint8_t NIB_Test_Enable_f;
 
 /* USER CODE END Includes */
 
@@ -361,6 +362,11 @@ void StartDefaultTask(void const * argument)
   {
     NIB_powerOn();
 
+    if(NIB_Test_Enable_f == TRUE && AppReadyFlag == 1)
+    {
+      NIB_CMD_Process();
+      NIB_Test_Enable_f = FALSE;
+    }
     osDelay(1);
   }
   /* USER CODE END 5 */

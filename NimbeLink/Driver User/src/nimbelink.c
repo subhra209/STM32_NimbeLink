@@ -19,7 +19,7 @@ extern uint8_t Dbg_Rcv_Beffer_Index;
 
 uint8_t NBL_Rcv_Buffer[MAX_NBL_RECV_DATA_LEN];          // receive buffer for nimbelink module
 uint8_t NBL_Rcv_BufferIndex = 0;                        // buffer index
-char const Nib_Test_Cmd[] = "nibtest";                  // Nimbelink test command
+
 char const App_Ready_s[] = "app ready";
 uint8_t AppReadyFlag = 0;                               // app ready flag for indicate device is ready
 
@@ -198,11 +198,8 @@ void NIB_test(void)
   uint8_t timeout = 3;
   uint8_t status = FALSE;
   //power on Module
-
+  //NIB_SendCmd(NIB_SET_ECHO_OFF, "OK", "ERROR", NIB_MAX_RES_TIMEOUT);
   // send ATEO command for echo  off
-//  NIB_SendCmdLen(GSM_SET_ECHO_OFF,AUTO_CMD_LEN);
-   //NIB_SendCmdLen(GSM_SET_ECHO_OFF,AUTO_CMD_LEN);
-
   // wait for command responce
   while(timeout)
   {
@@ -289,30 +286,6 @@ uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
   return ptr;
 }
 
-//char* strFind(const char* mainStr, const char* searchStr)
-//{
-//  const char *p1 = mainStr;
-//  const char *p2 = searchStr;
-//
-//  // check main array char dont have a null character
-//  while(*p1 != '\0')
-//  {
-//    // compare and check sub array char not null and match with main array char
-//    while(*p2 != '\0' && *p2 == *p1)
-//    {
-//      p1++;
-//      p2++;
-//    }
-//    // if sub array char receive null char then return match index value
-//    if(*p2 == '\0')
-//    {
-//      return (char*)*p1;
-//    }
-//    p1++;
-//  }
-//  return NULL;
-//}
-
 /*************************************************************************
 * Function Name: NIB_CMD_Process
 * Parameters: None
@@ -323,30 +296,14 @@ uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len)
 *************************************************************************/
 void NIB_CMD_Process(void)
 {
-     // NIB_test();
-  // perform test based on received command from terminal
+  // device is ready and debug command received nimbelink test command
   if(NIB_Test_Enable_f == TRUE)
   {
-    NIB_test();
-    //compare received charcter of array with NIB_TEST_CMD command
-      if(strcasecmp((char const *)Dbg_Rcv_Beffer,Nib_Test_Cmd) == 0)
-      {
-        // test the Nimbelink
-        NIB_test();
-        NIB_Test_Enable_f = FALSE;
-      }
-      // command is not valid
-      else
-      {
-        dprintf("Enter Valid Command");
-        NIB_Test_Enable_f = FALSE;
-      }
+    // send command for test nimbelink
+    NIB_getInfo();
+    NIB_Test_Enable_f = FALSE;
   }
 }
-
-
-
-
 
 ///*************************************************************************
 //* Function Name: DBG_Clearbuffer

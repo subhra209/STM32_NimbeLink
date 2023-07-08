@@ -39,6 +39,7 @@
 /* USER CODE BEGIN 0 */
 #include "stm32f4xx_hal_uart.h"
 #include "nimbelink.h"
+#include "string.h"
 
   // flag indicate  the Nimbelink test task execute
   uint8_t NIB_Test_Enable_f = FALSE;
@@ -46,6 +47,9 @@
   uint8_t Dbg_Rcv_Beffer[MAX_DBG_RECV_DATA_LEN];
   // Dbg_Rcv_Beffer index
   uint8_t Dbg_Rcv_Beffer_Index = 0;
+  uint8_t Nib_Test_Cmd[] = "nibtest";                  // Nimbelink test command
+
+  uint8_t* findBuff(uint8_t* buff, uint8_t* buff_find, uint8_t len);
 
 /* USER CODE END 0 */
 
@@ -232,10 +236,14 @@ void USART2_IRQHandler(void)
 
       // send new line character
       HAL_UART_Transmit(&huart2,"\r\n",2,1000);
-      // flag indicate  the Nimbelink test task execute
-      NIB_Test_Enable_f = TRUE;
+
+      // compare received data from debug uart with command
+      if(findBuff((uint8_t *)Dbg_Rcv_Beffer,Nib_Test_Cmd,strlen((const char*)Dbg_Rcv_Beffer)) != NULL)
+      {
+        // flag indicate  the Nimbelink test task execute
+        NIB_Test_Enable_f = TRUE;
+      }
       // process command operation test nimbelink
-      NIB_CMD_Process();
       Dbg_Rcv_Beffer_Index = 0;
     }
   }
