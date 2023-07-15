@@ -24,10 +24,19 @@
 #define SOCKET_CONTEXT_ID       "AT+QIACT=1\r\n"                                       // OK
 #define SOCKET_DIAL_STAGING     "AT+QIOPEN=1,0,\"TCP\",\"g.scstg.net\",9221,0,0\r\n" // CONNECT
 #define SOCKET_SEND_START       "AT+QISEND=0\r\n"                                      //>
+#define CONTEXT_IP_ADD          "AT+CGPADDR=1\r\n"    // get ip address of pdp context
+#define ATTACH_PACK             "AT+CGATT=1\r\n"     // Attach PS
 #define SOCKET_OK               ">"
 #define SOCKET_CTRL_Z           0x1A               // 26
 #define SOCKET_SEND_DATA        "AT+QIRD=0,128\r\n" // "AT+QIRD=0,%d"
 #define SOCKET_CLOSE            "AT+QICLOSE=1\r\n"
+#define SCAN_NET_SEQUENCE       "AT+QCFG="nwscanseq",010203,1\r\n"   // scan network sequence GSM->eMTC->NB-IoT , imidiate effect
+#define ERR_MSG_FORMATE         "AT+CMEE=2\r\n"    // Enable result code use numeric value
+#define DEFINE_PDP_CONTEXT      "AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n"    // Configure pdp context
+
+
+
+
 
 #define SOCKET_RESPONSE_SUCCESS "SEND OK"
 
@@ -61,6 +70,7 @@ void NIB_test(void);
 uint8_t NIB_powerOn(void);
 uint8_t NIB_getInfo(void);
 uint8_t NIB_connectServer(void);
+uint8_t Conf_Pdp_Context(void);
 
 uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len);
 
