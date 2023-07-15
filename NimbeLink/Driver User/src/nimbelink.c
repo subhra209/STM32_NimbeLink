@@ -21,7 +21,6 @@ extern uint8_t Dbg_Rcv_Beffer_Index;
 uint8_t NBL_Rcv_Buffer[MAX_NBL_RECV_DATA_LEN];          // receive buffer for nimbelink module
 uint8_t NBL_Rcv_BufferIndex = 0;                        // buffer index
 
-char const App_Ready_s[] = "app ready";
 uint8_t AppReadyFlag = 0;                               // app ready flag for indicate device is ready
 
 uint16_t gsmReg_timeOut = 180; //3 min - 180 sec
@@ -34,6 +33,7 @@ char imei_hex[7];
 
 WaypointHeader Header;
 
+uint8_t test_data[48] = {0x30,0x3d,0x6a,0x8d,0x4,0x84,0x1c,0x44,0xe7,0x76,0x42,0xe4,0xc9,0xd7,0xeb,0xa5,0x7e,0x9d,0x4f,0x78,0x35,0x08,0xfb,0x88,0xcc,0xcc,0xb2,0x89,0xae,0x4f,0x45,0x2f,0x94,0xb4,0xe3,0xe2,0xf3,0xc1,0x06,0x31,0x14,0x85,0xf3,0x6e,0x88,0xff,0x8d,0x76};
 /* Private Function prototype ---------------------------------------------------------*/
 void str_to_imei(char *str, char *imei);
 uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len);
@@ -132,31 +132,6 @@ RES_TYPE NIB_SendCmd(const char *cmd, const char * pRes1, const char * pRes2, ui
 }
 
 /*************************************************************************
-* Function Name: NIB_Res_Ok
-* Parameters:none
-
-*
-* Return:none
-*
-* Description: Check for valid response is received or not from nimbelink
-*
-*************************************************************************/
-uint8_t NIB_Res_Ok(void)
-{
-    //command receive valid data
-    if(strstr((const char *)NBL_Rcv_Buffer,"OK") != NULL)
-    {
-      dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
-      return TRUE;
-    }
-    else
-    {
-      // command received invalid data
-      return FALSE;
-    }
-}
-
-/*************************************************************************
 * Function Name: NIB_powerOn
 * Parameters:none
 
@@ -173,14 +148,39 @@ uint8_t NIB_powerOn(void)
     if(MapForward(NBL_Rcv_Buffer, (uint8_t*)"APP RDY", 7) != NULL)
     {
       AppReadyFlag = TRUE;
-     //NIB_SendCmd(GSM_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,NIB_RES_TIMEOUT);
+      //NIB_SendCmd(GSM_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,NIB_RES_TIMEOUT);
       //send echo off cmd
       if(NIB_SendCmd(NIB_SET_ECHO_OFF, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
       {
         NIB_getInfo();
         NIB_SendCmd("at+crsm=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n",
                     NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
-        NIB_connectServer();
+        if(NIB_connectServer())
+        {
+
+          //send data
+          if(NIB_SendCmd("AT+QISEND=0,48", NIB_SOCKET_OK,
+                         NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+          {
+            uint16_t timeOut = 180;
+            //After recieve '>' send data
+            NIB_Clearbuffer();
+            // send command to nimbelink module
+            NIB_Write(test_data, 48);
+
+            //check for SEND OK
+            while(timeOut)
+            {
+              vTaskDelay(1000/ portTICK_PERIOD_MS);
+              if(MapForward(NBL_Rcv_Buffer, "SEND OK", strlen("SEND OK")) != NULL)
+              {
+                dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
+                return RES_SUCCESS;
+              }
+              --timeOut;
+            }
+          }
+        }
       }
     }
   }
@@ -202,7 +202,7 @@ uint8_t NIB_getInfo(void)
   uint8_t* pToken = NULL;
   uint8_t i = 0;
 
-  if(NIB_SendCmd(GSM_GET_IMEI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+  if(NIB_SendCmd(NIB_GET_IMEI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
     //store IMEI number
     pToken = MapForward(NBL_Rcv_Buffer,
@@ -225,7 +225,7 @@ uint8_t NIB_getInfo(void)
     return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_ICCID, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+  if(NIB_SendCmd(NIB_GET_ICCID, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
     //store ICCID number
     pToken = MapForward(NBL_Rcv_Buffer,
@@ -244,7 +244,7 @@ uint8_t NIB_getInfo(void)
     return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CIMI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+  if(NIB_SendCmd(NIB_GET_CIMI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
     pToken = MapForward(NBL_Rcv_Buffer,
                         (unsigned char*)"\n", 1);
@@ -262,30 +262,55 @@ uint8_t NIB_getInfo(void)
     return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CGMM, NIB_RES_OK, NIB_RES_ERROR,
+  if(NIB_SendCmd(NIB_GET_CGMM, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_GET_CGMI, NIB_RES_OK, NIB_RES_ERROR,
+  if(NIB_SendCmd(NIB_GET_CGMI, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
 
-  if(NIB_SendCmd(GSM_FIRMWARE_VER, NIB_RES_OK, NIB_RES_ERROR,
+  if(NIB_SendCmd(NIB_FIRMWARE_VER, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
+
+  if(NIB_SendCmd(NIB_SIM_READ_BINARY, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
+  if(NIB_SendCmd(NIB_SIM_UPDATE_BINARY, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
+  if(NIB_SendCmd(NIB_ERR_MSG_FORMATE, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
   if(NIB_SendCmd(/*g_gpBuff*/"AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n",
-                NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+                 NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
 
-  if(NIB_SendCmd(CMD_CFUN1, NIB_RES_OK, NIB_RES_ERROR,
+  if(NIB_SendCmd(NIB_CONFIG_RAT_SEARCH_SEQ, NIB_RES_OK, NIB_RES_ERROR,
+                 NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
+  if(NIB_SendCmd(NIB_CMD_CFUN1, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
@@ -311,20 +336,17 @@ uint8_t NIB_connectServer(void)
 
   gsmReg_timeOut = 180; //3 min - 180 sec
 
-
-  // configure pdp context
-  Conf_Pdp_Context();
   //check CSQ signal
   //wait until not getting 99,99
   while(--gsmReg_timeOut)
   {
     // network signal strength db
-    if(NIB_SendCmd(GSM_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,
+    if(NIB_SendCmd(NIB_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,
                    NIB_RES_TIMEOUT) == RES_SUCCESS)
     {
       //check CSQ value
       pToken = MapForward(NBL_Rcv_Buffer,
-                          (unsigned char*)"+CSQ: ", 6);
+                          (uint8_t *)"+CSQ: ", 6);
       if(pToken != NULL)
       {
         csq = atoi((const char *)(pToken + 6));
@@ -340,12 +362,11 @@ uint8_t NIB_connectServer(void)
   gsmReg_timeOut = 180;
   while(--gsmReg_timeOut)
   {
-    if(NIB_SendCmd(GSM_NET_QUERY_CREG, NIB_RES_OK,
+    if(NIB_SendCmd(NIB_NET_QUERY_CREG, NIB_RES_OK,
                    NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
     {
       //check CREG value
-      pToken = MapForward(NBL_Rcv_Buffer,
-                          (unsigned char*)"+CREG: 0,", 9);
+      pToken = MapForward(NBL_Rcv_Buffer, "+CREG: 0,", 9);
       if(pToken != NULL)
       {
         csq = atoi((const char *)(pToken + 9));
@@ -357,65 +378,60 @@ uint8_t NIB_connectServer(void)
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 
-  ////////////////////////////////////////////////////////
-  /* connect socket */
-  gsmReg_timeOut = 180;
-  while(--gsmReg_timeOut)
+  if(NIB_SendCmd(NIB_QUERY_CGATT_PS, NIB_RES_OK,
+                 NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
-    //attach Packet switchinig
-    NIB_SendCmd(ATTACH_PACK, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
-    // activate context id
-    if(NIB_SendCmd(SOCKET_CONTEXT_ID, NIB_RES_OK,
-                   NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+    pToken = MapForward(NBL_Rcv_Buffer, "+CGATT: ", 8);
+    if(pToken != NULL)
     {
-      //check PDP CONTEX ID responce
-      pToken = MapForward(NBL_Rcv_Buffer,
-                          (unsigned char*)"+QIACT:", 7);
-
-      if(pToken != NULL)
+      csq = atoi((const char *)(pToken + 8));
+      if(csq == 0)
       {
-        // open socket for transmit data
-        if(NIB_SendCmd(SOCKET_DIAL_STAGING, NIB_RES_OK,NIB_RES_ERROR,
-                       NIB_RES_TIMEOUT) == RES_SUCCESS)
-        {
-          // check responce of open socket command is 0 for succesfull socket open
-          uint8_t* SckRes = MapForward(NBL_Rcv_Buffer,(unsigned char*)"+QIOPEN: 1,", 10);
-
-          if(SckRes != NULL)
-          {
-            csq = atoi((const char *)(SckRes + 10));
-            // socket open responce is succesfully open
-            if(csq == 0)
-            {
-              uint16_t gsmSend_timeOut = 120;  // 2 min timeout for SOCKET_SEND_START
-
-              while(--gsmSend_timeOut)
-              {
-              // send QISEND
-              if(NIB_SendCmd(SOCKET_SEND_START, NIB_RES_OK,NIB_RES_ERROR,
-                             NIB_RES_TIMEOUT) == RES_SUCCESS)
-              {
-                SckRes = MapForward(NBL_Rcv_Buffer,(unsigned char*)">", 1);
-                if(SckRes != NULL)
-                {
-                  // when data is sent succesfull received SEND OK
-                  SckRes = MapForward(NBL_Rcv_Buffer,
-                                      (unsigned char*)"SEND OK", 7);
-                  if(SckRes != NULL)
-                  {
-                    break;
-                  }
-                }
-              }
-              vTaskDelay(1000/portTICK_PERIOD_MS);
-              }
-            }
-          }
-        }
+        NIB_SendCmd(NIB_SET_CGATT_PS, NIB_RES_OK,
+                    NIB_RES_ERROR, NIB_RES_TIMEOUT);
       }
     }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
   }
+
+
+  if(NIB_SendCmd(NIB_QUERY_PDP_CONTEXT, NIB_RES_OK,
+                 NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+  {
+    pToken = MapForward(NBL_Rcv_Buffer, "+CGACT: 1,", 10);
+    if(pToken != NULL)
+    {
+      csq = atoi((const char *)(pToken + 10));
+      if(csq == 0)
+      {
+        NIB_SendCmd(NIB_SET_PDP_CONTEXT, NIB_RES_OK,
+                    NIB_RES_ERROR, NIB_RES_TIMEOUT);
+      }
+    }
+  }
+
+  //Check Connected IP Address
+  gsmReg_timeOut = 180;
+  do
+  {
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+    if(NIB_SendCmd(NIB_CONTEXT_IP_ADD, NIB_RES_OK,
+                   NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+    {
+      if(strstr((char const*)NBL_Rcv_Buffer, NIB_CONTEXT_IP_NULL) != NULL)
+      {
+        break;
+      }
+    }
+    --gsmReg_timeOut;
+  }while(gsmReg_timeOut);
+
+  //connect soket to staging server
+  if(NIB_SendCmd(NIB_SOCKET_DIAL_STAGING, NIB_SOCKET_DAIL_OK,
+                 NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+  {
+    return FALSE;
+  }
+
   return TRUE;
 }
 /*************************************************************************
@@ -458,30 +474,11 @@ void NIB_Enable_IRQ(void)
 *************************************************************************/
 void NIB_test(void)
 {
-  uint8_t timeout = 3;
-  uint8_t status = FALSE;
   //power on Module
    //NIB_SendCmd(NIB_SET_ECHO_OFF, "OK", "ERROR", NIB_MAX_RES_TIMEOUT);
   // send ATEO command for echo  off
   // wait for command responce
-  while(timeout)
-  {
-    // respose status (TRUE / FALSE)
-    status = NIB_Res_Ok();
-    // respose valid
-    if(status == TRUE)
-    {
-      break;
-    }
-    vTaskDelay(100/ portTICK_PERIOD_MS);
-    --timeout;
-  }
 
-  // respose not valid
-  if(status == FALSE)
-  {
-    dprintf("NIMBLINK data not recived");
-  }
 }
 /**
 * @brief This function handles USART2 global interrupt.
@@ -556,90 +553,6 @@ void NIB_CMD_Process(void)
     // send command for test nimbelink
     NIB_getInfo();
 }
-
-/*************************************************************************
-* Function Name: NIB_CMD_Process
-* Parameters: None
-* Return: none
-*
-* Description: Perfrom operation based on command received from terminal
-*
-*************************************************************************/
-//uint8_t ChekCsq(void)
-//{
-//  gsmReg_timeOut =
-//    while(--gsmReg_timeOut)
-//    {
-//      // network signal strength db
-//      if(NIB_SendCmd(GSM_GET_CSQ, NIB_RES_OK, NIB_RES_ERROR,
-//                     NIB_RES_TIMEOUT) == RES_SUCCESS)
-//      {
-//        //check CSQ value
-//        pToken = MapForward(NBL_Rcv_Buffer,
-//                            (unsigned char*)"+CSQ: ", 6);
-//        if(pToken != NULL)
-//        {
-//          csq = atoi((const char *)(pToken + 6));
-//          if(csq < 32)
-//          {
-//            break;
-//          }
-//        }
-//
-//      }
-//      vTaskDelay(1000/portTICK_PERIOD_MS);
-//    }
-//
-//}
-
-/*************************************************************************
-* Function Name: Conf_Pdp_Context
-* Parameters: None
-* Return: none
-*
-* Description: Configure packate data protocol
-*
-*************************************************************************/
-uint8_t Conf_Pdp_Context(void)
-{
-  uint8_t* pToken = NULL;
-
-  gsmReg_timeOut = 180; //3 min - 180 sec
-  while(--gsmReg_timeOut)
-  {
-    // network signal strength db
-    if(NIB_SendCmd(DEFINE_PDP_CONTEXT, NIB_RES_OK, NIB_RES_ERROR,
-                   NIB_RES_TIMEOUT) == RES_SUCCESS)
-    {
-      //check CSQ value
-      pToken = MapForward(NBL_Rcv_Buffer,
-                          (unsigned char*)"OK", 2);
-      if(pToken != NULL)
-      {
-        if(NIB_SendCmd(CMD_CFUN1, NIB_RES_OK, NIB_RES_ERROR,
-                   NIB_RES_TIMEOUT) == RES_SUCCESS);
-        {
-          pToken = MapForward(NBL_Rcv_Buffer,
-                          (unsigned char*)"OK", 2);
-          if(pToken != NULL)
-          {
-                return TRUE;
-          }
-        }
-      }
-    }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
-  }
-  return FALSE;
-}
-
-
-
-
-
-
-
-
 
 ///*************************************************************************
 //* Function Name: DBG_Clearbuffer

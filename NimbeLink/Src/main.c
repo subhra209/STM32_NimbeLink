@@ -362,11 +362,11 @@ void StartDefaultTask(void const * argument)
   {
     NIB_powerOn();
 
-    if(NIB_Test_Enable_f == TRUE && AppReadyFlag == 1)
-    {
-      NIB_CMD_Process();
-      NIB_Test_Enable_f = FALSE;
-    }
+//    if(NIB_Test_Enable_f == TRUE && AppReadyFlag == 1)
+//    {
+//      NIB_CMD_Process();
+//      NIB_Test_Enable_f = FALSE;
+//    }
     osDelay(1);
   }
   /* USER CODE END 5 */
