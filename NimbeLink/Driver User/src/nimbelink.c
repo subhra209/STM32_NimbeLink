@@ -153,32 +153,37 @@ uint8_t NIB_powerOn(void)
       if(NIB_SendCmd(NIB_SET_ECHO_OFF, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
       {
         NIB_getInfo();
-        NIB_SendCmd("at+crsm=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n",
-                    NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
-        if(NIB_connectServer())
+        while(1)
         {
-
-          //send data
-          if(NIB_SendCmd("AT+QISEND=0,48", NIB_SOCKET_OK,
-                         NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+          NIB_SendCmd("at+crsm=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n",
+                      NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
+          if(NIB_connectServer())
           {
-            uint16_t timeOut = 180;
-            //After recieve '>' send data
-            NIB_Clearbuffer();
-            // send command to nimbelink module
-            NIB_Write(test_data, 48);
 
-            //check for SEND OK
-            while(timeOut)
+            //send data
+            if(NIB_SendCmd("AT+QISEND=0,48\r\n", NIB_SOCKET_OK,
+                           NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
             {
-              vTaskDelay(1000/ portTICK_PERIOD_MS);
-              if(MapForward(NBL_Rcv_Buffer, "SEND OK", strlen("SEND OK")) != NULL)
+              uint16_t timeOut = 180;
+              //After recieve '>' send data
+              NIB_Clearbuffer();
+              // send command to nimbelink module
+              NIB_Write(test_data, 48);
+
+              //check for SEND OK
+              while(timeOut)
               {
-                dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
-                return RES_SUCCESS;
+                vTaskDelay(1000/ portTICK_PERIOD_MS);
+                if(MapForward(NBL_Rcv_Buffer, "SEND OK", strlen("SEND OK")) != NULL)
+                {
+                  dprintf("NIMBLINK ---> %s", NBL_Rcv_Buffer);
+                  break;
+//                  return RES_SUCCESS;
+                }
+                --timeOut;
               }
-              --timeOut;
             }
+//            return AppReadyFlag;
           }
         }
       }
@@ -298,7 +303,7 @@ uint8_t NIB_getInfo(void)
     return FALSE;
   }
 
-  if(NIB_SendCmd(/*g_gpBuff*/"AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n",
+  if(NIB_SendCmd(/*g_gpBuff*/"AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n", //onomondo   airtelgprs.com
                  NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
@@ -358,6 +363,10 @@ uint8_t NIB_connectServer(void)
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 
+  if(gsmReg_timeOut == 0)
+  {
+    return FALSE;
+  }
   //check CREG Value
   gsmReg_timeOut = 180;
   while(--gsmReg_timeOut)
@@ -377,6 +386,10 @@ uint8_t NIB_connectServer(void)
     }
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
+  if(gsmReg_timeOut == 0)
+  {
+    return FALSE;
+  }
 
   if(NIB_SendCmd(NIB_QUERY_CGATT_PS, NIB_RES_OK,
                  NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
@@ -387,8 +400,11 @@ uint8_t NIB_connectServer(void)
       csq = atoi((const char *)(pToken + 8));
       if(csq == 0)
       {
-        NIB_SendCmd(NIB_SET_CGATT_PS, NIB_RES_OK,
-                    NIB_RES_ERROR, NIB_RES_TIMEOUT);
+        if(NIB_SendCmd(NIB_SET_CGATT_PS, NIB_RES_OK,
+                    NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+        {
+          return FALSE;
+        }
       }
     }
   }
@@ -403,8 +419,11 @@ uint8_t NIB_connectServer(void)
       csq = atoi((const char *)(pToken + 10));
       if(csq == 0)
       {
-        NIB_SendCmd(NIB_SET_PDP_CONTEXT, NIB_RES_OK,
-                    NIB_RES_ERROR, NIB_RES_TIMEOUT);
+        if(NIB_SendCmd(NIB_SET_PDP_CONTEXT, NIB_RES_OK,
+                    NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+        {
+          return FALSE;
+        }
       }
     }
   }
@@ -425,12 +444,35 @@ uint8_t NIB_connectServer(void)
     --gsmReg_timeOut;
   }while(gsmReg_timeOut);
 
-  //connect soket to staging server
-  if(NIB_SendCmd(NIB_SOCKET_DIAL_STAGING, NIB_SOCKET_DAIL_OK,
-                 NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+  if(gsmReg_timeOut == 0)
   {
     return FALSE;
   }
+
+  //check socket connected to server or not ?
+  if(NIB_SendCmd(NIB_QUERY_SOCKET_STATUS, NIB_RES_OK,
+                 NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
+  {
+    //+QISTATE: 0,"TCP","35.246.61.178",9221,7011,2,1,0,0,"uart1"
+    pToken = MapForward(NBL_Rcv_Buffer, "+QISTATE:", 9);
+    if(pToken == NULL)
+    {
+      //connect soket to staging server
+      if(NIB_SendCmd(NIB_SOCKET_DIAL_STAGING, NIB_SOCKET_DAIL_OK,
+                     NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
+      {
+        return FALSE;
+      }
+    }
+    else
+    {
+      //check connection status
+      //if anything wrong
+      //close exisiting one and reconnect again
+      //+QISTATE: 0,"TCP","35.246.61.178",9221,7011,2,1,0,0,"uart1"
+    }
+  }
+
 
   return TRUE;
 }

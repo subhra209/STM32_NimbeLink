@@ -42,7 +42,7 @@
 #define NIB_SIM_UPDATE_BINARY           "AT+CRSM=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n"
 
 #define NIB_CONFIG_RAT_SEARCH_SEQ       "AT+QCFG=\"nwscanseq\",010203,1\r\n"    // scan network sequence GSM->eMTC->NB-IoT , imidiate effect
-
+#define NIB_QUERY_SOCKET_STATUS         "AT+QISTATE?\r\n"
 
 
 #define SOCKET_RESPONSE_SUCCESS "SEND OK"
