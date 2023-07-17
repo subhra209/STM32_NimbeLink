@@ -33,19 +33,20 @@ char imei_hex[7];
 
 WaypointHeader Header;
 
+// hex packet data for send to server
 uint8_t test_data[48] = {0x30,0x3d,0x6a,0x8d,0x4,0x84,0x1c,0x44,0xe7,0x76,0x42,0xe4,0xc9,0xd7,0xeb,0xa5,0x7e,0x9d,0x4f,0x78,0x35,0x08,0xfb,0x88,0xcc,0xcc,0xb2,0x89,0xae,0x4f,0x45,0x2f,0x94,0xb4,0xe3,0xe2,0xf3,0xc1,0x06,0x31,0x14,0x85,0xf3,0x6e,0x88,0xff,0x8d,0x76};
 /* Private Function prototype ---------------------------------------------------------*/
-void str_to_imei(char *str, char *imei);
-uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len);
+
+
 
 /* Function ------------------------------------------------------------------*/
 
 /*******************************************************************************
- * Funtion name : str_to_imei                                               *
+ * Funtion name : str_to_imei                                                  *
  *                                                                             *
- * Description  :             	   * * 				                                    						   *
- * Arguments    : none       						   *
- * Returns      : none                        				   *
+ * Description  : Convert String To int IMEI number             	       * 				                                    						   *
+ * Arguments    : str,imei       					       *
+ * Returns      : none                        				       *
  *******************************************************************************/
 void str_to_imei(char *str, char *imei)
 {
@@ -95,11 +96,13 @@ void NIB_Write(const void *data, uint16_t len)
   HAL_UART_Transmit(&huart1,(uint8_t *)data, len, 5000);
 }
 /*************************************************************************
-* Function Name: NIB_SendCmdLen
+* Function Name: NIB_SendCmd
 * Parameters:1) data - command char address
-             2) len - length of command
+*            2) pRes1 - Ok value
+*            3) pRes2 - Error value
+*            4) timeOut_s - Timeout Value
 *
-* Return: none
+* Return: Status (SUCCESS / ERRROR)
 *
 * Description: send command to nimbelink module and print command in terminal
 *
@@ -135,11 +138,10 @@ RES_TYPE NIB_SendCmd(const char *cmd, const char * pRes1, const char * pRes2, ui
 * Function Name: NIB_powerOn
 * Parameters:none
 
+* Return: Status Of AppReadyFlag (TRUE / FALSE)
 *
-* Return:none
-*
-* Description: Check for valid response is received or not from nimbelink
-*
+* Description: power on device and get inforamtion of device , connect to server
+*              and send data
 *************************************************************************/
 uint8_t NIB_powerOn(void)
 {
@@ -152,11 +154,15 @@ uint8_t NIB_powerOn(void)
       //send echo off cmd
       if(NIB_SendCmd(NIB_SET_ECHO_OFF, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
       {
+        // Get information of Nimbelink module
         NIB_getInfo();
         while(1)
         {
+          // Restricted sim access - UPDATE BINARY
           NIB_SendCmd("at+crsm=214,28539,0,0,12,\"FFFFFFFFFFFFFFFFFFFFFFFF\"\r\n",
                       NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT);
+
+          // conennect module with server
           if(NIB_connectServer())
           {
 
@@ -195,12 +201,10 @@ uint8_t NIB_powerOn(void)
 /*************************************************************************
 * Function Name: NIB_getInfo
 * Parameters:none
-
 *
-* Return:none
+* Return:Status (TRUE / FALSE)
 *
-* Description: Check for valid response is received or not from nimbelink
-*
+* Description: Get Information of NIMBELINK Module
 *************************************************************************/
 uint8_t NIB_getInfo(void)
 {
@@ -248,7 +252,7 @@ uint8_t NIB_getInfo(void)
   {
     return FALSE;
   }
-
+  // Get CIMI Number of module
   if(NIB_SendCmd(NIB_GET_CIMI, NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
     pToken = MapForward(NBL_Rcv_Buffer,
@@ -266,19 +270,19 @@ uint8_t NIB_getInfo(void)
   {
     return FALSE;
   }
-
+  // Get Model Information
   if(NIB_SendCmd(NIB_GET_CGMM, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
-
+  // Get Manufacturer Identification
   if(NIB_SendCmd(NIB_GET_CGMI, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
-
+  // Get Firmware Version
   if(NIB_SendCmd(NIB_FIRMWARE_VER, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
@@ -296,25 +300,25 @@ uint8_t NIB_getInfo(void)
   {
     return FALSE;
   }
-
+  //Enable result code and use numeric values
   if(NIB_SendCmd(NIB_ERR_MSG_FORMATE, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
-
+  // Define PDP Context
   if(NIB_SendCmd(/*g_gpBuff*/"AT+CGDCONT=1,\"IP\",\"onomondo\"\r\n", //onomondo   airtelgprs.com
                  NIB_RES_OK, NIB_RES_ERROR, NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
-
+  // scan network sequence GSM->eMTC->NB-IoT , imidiate effect
   if(NIB_SendCmd(NIB_CONFIG_RAT_SEARCH_SEQ, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
     return FALSE;
   }
-
+  // Set Full Funtionality Mode
   if(NIB_SendCmd(NIB_CMD_CFUN1, NIB_RES_OK, NIB_RES_ERROR,
                  NIB_RES_TIMEOUT) != RES_SUCCESS)
   {
@@ -328,10 +332,9 @@ uint8_t NIB_getInfo(void)
 * Function Name: NIB_connectServer
 * Parameters:none
 
+* Return: Status (TRUE / FALSE)
 *
-* Return:none
-*
-* Description: Check for valid response is received or not from nimbelink
+* Description: Nimbelink Module Connect With Server
 *
 *************************************************************************/
 uint8_t NIB_connectServer(void)
@@ -390,7 +393,7 @@ uint8_t NIB_connectServer(void)
   {
     return FALSE;
   }
-
+  // check PS attach Or De-attach
   if(NIB_SendCmd(NIB_QUERY_CGATT_PS, NIB_RES_OK,
                  NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
@@ -409,7 +412,7 @@ uint8_t NIB_connectServer(void)
     }
   }
 
-
+  // Check PDP context Is Activate OR Not
   if(NIB_SendCmd(NIB_QUERY_PDP_CONTEXT, NIB_RES_OK,
                  NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
   {
@@ -482,8 +485,6 @@ uint8_t NIB_connectServer(void)
 * Return: none
 *
 * Description: Clear NIMBELINK Receive buffer and index
-*
-*
 *************************************************************************/
 void NIB_Clearbuffer(void)
 {
@@ -496,9 +497,7 @@ void NIB_Clearbuffer(void)
 * Parameters: None
 * Return: none
 *
-* Description: enable UART-2 interrupt register not empty flag
-*
-*
+* Description: enable UART-1 interrupt register not empty flag
 *************************************************************************/
 void NIB_Enable_IRQ(void)
 {
@@ -506,25 +505,14 @@ void NIB_Enable_IRQ(void)
   __HAL_UART_ENABLE_IT(&huart1,UART_FLAG_RXNE);
 }
 /*************************************************************************
-* Function Name: NIB_test
+* Function Name: USART1_IRQHandler
 * Parameters: None
-* Return: none
+* Return: None
 *
-* Description: test NIMBELINK Module sending command
-*
+* Description: This function handles USART1 global interrupt
 *
 *************************************************************************/
-void NIB_test(void)
-{
-  //power on Module
-   //NIB_SendCmd(NIB_SET_ECHO_OFF, "OK", "ERROR", NIB_MAX_RES_TIMEOUT);
-  // send ATEO command for echo  off
-  // wait for command responce
 
-}
-/**
-* @brief This function handles USART2 global interrupt.
-*/
 void USART1_IRQHandler(void)
 {
   // check interrupt is occur or not
@@ -558,6 +546,14 @@ void USART1_IRQHandler(void)
 /* if match command then TEST nimbelink */
 /* if not matched command then print Enter valid command */
 
+/*************************************************************************
+* Function Name: MapForward
+* Parameters: None
+* Return: ptr (address of buff_find last char address) [ NULL || NOT NULL]
+*
+* Description: Compare main buff data and Find Buff data (strstr)
+*
+*************************************************************************/
 uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len)
 {
   uint8_t* ptr = NULL;
@@ -587,7 +583,6 @@ uint8_t* MapForward(uint8_t* buff, uint8_t* buff_find, uint8_t len)
 * Return: none
 *
 * Description: Perfrom operation based on command received from terminal
-*
 *************************************************************************/
 void NIB_CMD_Process(void)
 {
