@@ -26,7 +26,7 @@
 #define NIB_SOCKET_SEND_START           "AT+QISEND=0\r\n"                                      //>
 #define NIB_CONTEXT_IP_ADD              "AT+CGPADDR=1\r\n"    // get ip address of pdp context
 #define NIB_CONTEXT_IP_NULL             "0.0.0.0"
-#define NIB_QUERY_CGATT_PS              "AT+CGATT=?\r\n"
+#define NIB_QUERY_CGATT_PS              "AT+CGATT?\r\n"
 #define NIB_SET_CGATT_PS                "AT+CGATT=1\r\n"     // Attach PS
 #define NIB_QUERY_PDP_CONTEXT           "AT+CGACT?\r\n"
 #define NIB_SET_PDP_CONTEXT             "AT+CGACT=1,1\r\n"

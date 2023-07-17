@@ -417,7 +417,7 @@ uint8_t NIB_connectServer(void)
     if(NIB_SendCmd(NIB_CONTEXT_IP_ADD, NIB_RES_OK,
                    NIB_RES_ERROR, NIB_RES_TIMEOUT) == RES_SUCCESS)
     {
-      if(strstr((char const*)NBL_Rcv_Buffer, NIB_CONTEXT_IP_NULL) != NULL)
+      if(strstr((char const*)NBL_Rcv_Buffer, NIB_CONTEXT_IP_NULL) == NULL)
       {
         break;
       }
